@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins
+  namespace: atlas-cmms
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30090
+    - name: agent
+      port: 50000
+      targetPort: 50000
+  selector:
+    app: jenkins
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+  namespace: atlas-cmms
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jenkins
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      serviceAccountName: jenkins-admin
+      containers:
+        - name: jenkins
+          image: jenkins/jenkins:lts
+          ports:
+            - containerPort: 8080
+            - containerPort: 50000
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
+      volumes:
+        - name: jenkins-data
+          persistentVolumeClaim:
+            claimName: jenkins-pvc
+        - name: docker-socket
+          hostPath:
+            path: /var/run/docker.sock

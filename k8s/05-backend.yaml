@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: atlas-cmms
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30080
+  selector:
+    app: backend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: atlas-cmms
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: lusardi1943/atlas-cmms-backend:v5.0
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_URL
+              value: "postgres:5432/atlas"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_USER
+            - name: DB_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PUBLIC_API_URL
+              value: "http://localhost:8080"
+            - name: PUBLIC_FRONT_URL
+              value: "http://localhost:3000"
+            - name: STORAGE_TYPE
+              value: "minio"
+            - name: MINIO_ENDPOINT
+              value: "http://minio:9000"
+            - name: MINIO_BUCKET
+              value: "atlas-files"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MINIO_ROOT_USER
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: JWT_SECRET_KEY
+              value: "super_secret_key_change_me_in_production_please_123456789"
+            - name: INVITATION_VIA_EMAIL
+              value: "false"
+            - name: ENABLE_EMAIL_NOTIFICATIONS
+              value: "false"
+            - name: MAIL_RECIPIENTS
+              value: "admin@example.com"
+            - name: SMTP_PWD
+              value: "dummy"
+            - name: SMTP_USER
+              value: "dummy"
+            - name: SMTP_HOST
+              value: "smtp.gmail.com"
+            - name: SMTP_PORT
+              value: "587"
+            - name: FASTSPRING_USER
+              value: "dummy"
+            - name: FASTSPRING_PWD
+              value: "dummy"
+            - name: OAUTH2_PROVIDER
+              value: "google"
