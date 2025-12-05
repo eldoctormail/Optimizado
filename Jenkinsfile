@@ -8,6 +8,8 @@ pipeline {
         REGISTRY_USER = 'lusardi1943'
         // Dynamic tag based on build number
         IMAGE_TAG = "v5.0.${BUILD_NUMBER}"
+        // Add custom tools to PATH
+        PATH = "/var/jenkins_home/tools_bin:$PATH"
     }
     
     stages {
