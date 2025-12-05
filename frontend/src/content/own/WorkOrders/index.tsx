@@ -378,10 +378,10 @@ function WorkOrders() {
               params.value === 'IN_PROGRESS'
                 ? 'success'
                 : params.value === 'ON_HOLD'
-                ? 'warning'
-                : params.value === 'COMPLETE'
-                ? 'info'
-                : 'secondary'
+                  ? 'warning'
+                  : params.value === 'COMPLETE'
+                    ? 'info'
+                    : 'secondary'
             }
           />
           <Typography sx={{ ml: 1 }}>{t(params.value)}</Typography>
@@ -700,12 +700,12 @@ function WorkOrders() {
                 : null,
               location: locationParamObject
                 ? {
-                    label: locationParamObject.name,
-                    value: locationParamObject.id
-                  }
+                  label: locationParamObject.name,
+                  value: locationParamObject.id
+                }
                 : null
             }}
-            onChange={({ field, e }) => {}}
+            onChange={({ field, e }) => { }}
             onSubmit={async (values) => {
               let formattedValues = formatValues(values);
               return new Promise<void>((resolve, rej) => {
@@ -773,7 +773,7 @@ function WorkOrders() {
               tasks,
               ...getWOBaseValues(t, currentWorkOrder)
             }}
-            onChange={({ field, e }) => {}}
+            onChange={({ field, e }) => { }}
             onSubmit={async (values) => {
               let formattedValues = formatValues(values);
               return new Promise<void>((resolve, rej) => {
@@ -847,9 +847,13 @@ function WorkOrders() {
         <MenuItem
           disabled={loadingExport['work-orders']}
           onClick={() => {
-            dispatch(exportEntity('work-orders')).then((url: string) => {
-              window.open(url);
-            });
+            dispatch(exportEntity('work-orders'))
+              .then((url: string) => {
+                window.open(url);
+              })
+              .catch((e) => {
+                showSnackBar(t('an_error_occurred'), 'error');
+              });
           }}
         >
           <Stack spacing={2} direction="row">

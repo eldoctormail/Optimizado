@@ -14,7 +14,7 @@ services:
   api:
     # [MODIFICADO] Cambiado de 'image' a 'build' para permitir compilación local.
     # Impacto: Permite generar una imagen Docker con nuestras optimizaciones personalizadas en lugar de descargar la oficial.
-    image: lusardi1943/atlas-cmms-backend:v3
+    image: lusardi1943/atlas-cmms-backend:v4.0
     build: ./api
     container_name: atlas-cmms-backend
     depends_on:
@@ -63,7 +63,7 @@ services:
   frontend:
     # [MODIFICADO] Cambiado de 'image' a 'build' para permitir compilación local.
     # Impacto: Permite generar una imagen Docker del frontend con nuestros cambios locales.
-    image: lusardi1943/atlas-cmms-frontend:v3
+    image: lusardi1943/atlas-cmms-frontend:v4.0
     build: ./frontend
     container_name: atlas-cmms-frontend
     environment:

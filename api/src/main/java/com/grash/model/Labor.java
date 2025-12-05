@@ -11,6 +11,7 @@ import org.hibernate.annotations.OnDeleteAction;
 
 import javax.persistence.*;
 import javax.validation.constraints.NotNull;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -64,15 +65,15 @@ public class Labor extends Time {
         this.logged = logged;
     }
 
-    public static long getTotalWorkDuration(List<Labor> labors) {
+    public static long getTotalWorkDuration(Collection<Labor> labors) {
         // Sort labors by their start time
-        labors = labors.stream().filter(labor -> labor.getStartedAt() != null).collect(Collectors.toList());
-        labors.sort(Comparator.comparing(Labor::getStartedAt));
+        List<Labor> sortedLabors = labors.stream().filter(labor -> labor.getStartedAt() != null).collect(Collectors.toList());
+        sortedLabors.sort(Comparator.comparing(Labor::getStartedAt));
 
         long totalDuration = 0;
         Date previousEnd = null;
 
-        for (Labor labor : labors) {
+        for (Labor labor : sortedLabors) {
             Date currentStart = labor.getStartedAt();
             Date currentEnd = labor.getEndedAt();
 

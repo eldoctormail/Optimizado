@@ -465,7 +465,7 @@ const Parts = ({ setAction }: PropsType) => {
             validation={Yup.object().shape(shape)}
             submitText={t('create_part')}
             values={{}}
-            onChange={({ field, e }) => {}}
+            onChange={({ field, e }) => { }}
             onSubmit={async (values) => {
               let formattedValues = formatValues(values);
               return new Promise<void>((resolve, rej) => {
@@ -594,7 +594,7 @@ const Parts = ({ setAction }: PropsType) => {
                 };
               })
             }}
-            onChange={({ field, e }) => {}}
+            onChange={({ field, e }) => { }}
             onSubmit={async (values) => {
               let formattedValues = formatValues(values);
               return new Promise<void>((resolve, rej) => {
@@ -642,9 +642,13 @@ const Parts = ({ setAction }: PropsType) => {
         <MenuItem
           disabled={loadingExport['parts']}
           onClick={() => {
-            dispatch(exportEntity('parts')).then((url: string) => {
-              window.open(url);
-            });
+            dispatch(exportEntity('parts'))
+              .then((url: string) => {
+                window.open(url);
+              })
+              .catch((e) => {
+                showSnackBar(t('an_error_occurred'), 'error');
+              });
           }}
         >
           <Stack spacing={2} direction="row">

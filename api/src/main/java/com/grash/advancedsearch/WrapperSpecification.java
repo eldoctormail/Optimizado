@@ -27,22 +27,40 @@ public class WrapperSpecification<T> implements Specification<T> {
         Predicate result = null;
         switch (Objects.requireNonNull(SearchOperation.getSimpleOperation(filterField.getOperation()))) {
             case CONTAINS:
-                result = cb.like(cb.lower(root.get(filterField.getField())), "%" + strToSearch + "%");
+                result = cb.like(
+                    cb.function("unaccent", String.class, cb.lower((Expression<String>) getFieldPath(root, filterField.getField()))),
+                    "%" + removeAccents(strToSearch) + "%"
+                );
                 break;
             case DOES_NOT_CONTAIN:
-                result = cb.notLike(cb.lower(root.get(filterField.getField())), "%" + strToSearch + "%");
+                result = cb.notLike(
+                    cb.function("unaccent", String.class, cb.lower((Expression<String>) getFieldPath(root, filterField.getField()))),
+                    "%" + removeAccents(strToSearch) + "%"
+                );
                 break;
             case BEGINS_WITH:
-                result = cb.like(cb.lower(root.get(filterField.getField())), strToSearch + "%");
+                result = cb.like(
+                    cb.function("unaccent", String.class, cb.lower((Expression<String>) getFieldPath(root, filterField.getField()))),
+                    removeAccents(strToSearch) + "%"
+                );
                 break;
             case DOES_NOT_BEGIN_WITH:
-                result = cb.notLike(cb.lower(root.get(filterField.getField())), strToSearch + "%");
+                result = cb.notLike(
+                    cb.function("unaccent", String.class, cb.lower((Expression<String>) getFieldPath(root, filterField.getField()))),
+                    removeAccents(strToSearch) + "%"
+                );
                 break;
             case ENDS_WITH:
-                result = cb.like(cb.lower(root.get(filterField.getField())), "%" + strToSearch);
+                result = cb.like(
+                    cb.function("unaccent", String.class, cb.lower((Expression<String>) getFieldPath(root, filterField.getField()))),
+                    "%" + removeAccents(strToSearch)
+                );
                 break;
             case DOES_NOT_END_WITH:
-                result = cb.notLike(cb.lower(root.get(filterField.getField())), "%" + strToSearch);
+                result = cb.notLike(
+                    cb.function("unaccent", String.class, cb.lower((Expression<String>) getFieldPath(root, filterField.getField()))),
+                    "%" + removeAccents(strToSearch)
+                );
                 break;
             case EQUAL:
                 result = cb.equal(getFieldPath(root, filterField.getField()), filterField.getValue());
@@ -57,27 +75,27 @@ public class WrapperSpecification<T> implements Specification<T> {
                 result = cb.isNotNull(root.get(filterField.getField()));
                 break;
             case GREATER_THAN:
-                result = cb.greaterThan(root.get(filterField.getField()), (Comparable) filterField.getValue());
+                result = cb.greaterThan((Expression<Comparable>) getFieldPath(root, filterField.getField()), (Comparable) filterField.getValue());
                 break;
             case GREATER_THAN_EQUAL:
                 if (filterField.getEnumName() != null && filterField.getEnumName().equals(EnumName.JS_DATE)) {
-                    result = cb.greaterThanOrEqualTo(root.get(filterField.getField()), Helper.getDateFromJsString(filterField.getValue().toString()));
+                    result = cb.greaterThanOrEqualTo((Expression<Comparable>) getFieldPath(root, filterField.getField()), (Comparable) Helper.getDateFromJsString(filterField.getValue().toString()));
                 } else {
-                    result = cb.greaterThanOrEqualTo(root.get(filterField.getField()), (Comparable) filterField.getValue());
+                    result = cb.greaterThanOrEqualTo((Expression<Comparable>) getFieldPath(root, filterField.getField()), (Comparable) filterField.getValue());
                 }
                 break;
             case LESS_THAN:
-                result = cb.lessThan(root.get(filterField.getField()), (Comparable) filterField.getValue());
+                result = cb.lessThan((Expression<Comparable>) getFieldPath(root, filterField.getField()), (Comparable) filterField.getValue());
                 break;
             case LESS_THAN_EQUAL:
                 if (filterField.getEnumName() != null && filterField.getEnumName().equals(EnumName.JS_DATE)) {
-                    result = cb.lessThanOrEqualTo(root.get(filterField.getField()), Helper.getDateFromJsString(filterField.getValue().toString()));
+                    result = cb.lessThanOrEqualTo((Expression<Comparable>) getFieldPath(root, filterField.getField()), (Comparable) Helper.getDateFromJsString(filterField.getValue().toString()));
                 } else {
-                    result = cb.lessThanOrEqualTo(root.get(filterField.getField()), (Comparable) filterField.getValue());
+                    result = cb.lessThanOrEqualTo((Expression<Comparable>) getFieldPath(root, filterField.getField()), (Comparable) filterField.getValue());
                 }
                 break;
             case IN:
-                CriteriaBuilder.In<Object> inClause = cb.in(root.get(filterField.getField()));
+                CriteriaBuilder.In<Object> inClause = cb.in(getFieldPath(root, filterField.getField()));
                 filterField.getValues().forEach(value -> inClause.value(getRealValue(filterField.getEnumName(), value)));
                 result = inClause;
                 break;
@@ -126,15 +144,50 @@ public class WrapperSpecification<T> implements Specification<T> {
         return value;
     }
 
-    private Path<T> getFieldPath(Root<T> root, String field) {
-        // Split the field path using dot notation
-        String[] fieldNames = field.split("\\.");
+    /**
+     * Removes accents from a string for normalized searching.
+     * This normalizes the search term to match PostgreSQL's unaccent() function behavior.
+     */
+    /**
+     * [MODIFICADO] Normalización de Texto
+     * Impacto: Elimina acentos y convierte a minúsculas.
+     * Beneficio: Permite búsquedas insensibles a acentos y mayúsculas (ej: "Alcolea" == "alcolea").
+     */
+    private String removeAccents(String input) {
+        if (input == null) return null;
+        return java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD)
+            .replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+            .toLowerCase();
+    }
 
-        // Traverse the field path to get the Path object
-        Path<T> path = root;
-        for (String fieldName : fieldNames) {
-            path = path.get(fieldName);
+    /**
+     * [MODIFICADO] Navegación Segura de Campos
+     * Impacto: Usa LEFT JOIN para acceder a propiedades anidadas (ej: location.name).
+     * Beneficio: Evita errores (crashes) cuando la relación es nula y permite buscar en sub-entidades.
+     */
+    private Path<?> getFieldPath(Root<T> root, String field) {
+        String[] fieldNames = field.split("\\.");
+        if (fieldNames.length > 1) {
+            From<?, ?> from = root;
+            for (int i = 0; i < fieldNames.length - 1; i++) {
+                from = getOrCreateJoin(from, fieldNames[i], JoinType.LEFT);
+            }
+            return from.get(fieldNames[fieldNames.length - 1]);
         }
-        return path;
+        return root.get(field);
+    }
+
+    /**
+     * [MODIFICADO] Reutilización de Uniones
+     * Impacto: Verifica si ya existe una unión antes de crear una nueva.
+     * Beneficio: Optimiza la consulta SQL y evita errores de "uniones duplicadas" en JPA.
+     */
+    private Join<?, ?> getOrCreateJoin(From<?, ?> from, String attributeName, JoinType joinType) {
+        for (Join<?, ?> join : from.getJoins()) {
+            if (join.getAttribute().getName().equals(attributeName)) {
+                return join;
+            }
+        }
+        return from.join(attributeName, joinType);
     }
 }

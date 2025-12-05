@@ -69,6 +69,10 @@ public class LaborService {
         return laborRepository.findByWorkOrder_Id(id);
     }
 
+    public Collection<Labor> findByWorkOrderIn(Collection<Long> ids) {
+        return laborRepository.findByWorkOrder_IdIn(ids);
+    }
+
     public Labor stop(Labor labor) {
         labor.setStatus(TimeStatus.STOPPED);
         labor.setDuration(labor.getDuration() + Helper.getDateDiff(labor.getStartedAt(), new Date(), TimeUnit.SECONDS));

@@ -14,7 +14,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const persistConfig = {
   key: 'root',
-  storage: AsyncStorage
+  storage: AsyncStorage,
+  blacklist: [
+    'assets',
+    'locations',
+    'parts',
+    'workOrders',
+    'meters',
+    'requests',
+    'users',
+    'teams',
+    'vendors',
+    'customers',
+    'preventiveMaintenances',
+    'downtimes',
+    'woAnalytics',
+    'assetAnalytics',
+    'partAnalytics',
+    'requestAnalytics',
+    'userAnalytics'
+  ]
 };
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
@@ -23,7 +42,8 @@ const store = configureStore({
   devTools: true,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      serializableCheck: false
+      serializableCheck: false,
+      immutableCheck: false
     })
 });
 

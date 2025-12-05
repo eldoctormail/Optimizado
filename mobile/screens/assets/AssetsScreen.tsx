@@ -3,7 +3,9 @@ import {
   ScrollView,
   StyleSheet,
   View,
-  Image
+  Image,
+  FlatList,
+  ActivityIndicator
 } from 'react-native';
 import { useDispatch, useSelector } from '../../store';
 import * as React from 'react';
@@ -23,7 +25,10 @@ import { IconWithLabel } from '../../components/IconWithLabel';
 import { Asset } from 'expo-asset';
 import { useAppTheme } from '../../custom-theme';
 
-const AssetCard = ({
+// [MODIFICADO] Optimización de Rendimiento: React.memo
+// Impacto: Evita re-renderizados innecesarios de cada tarjeta al escribir en la búsqueda.
+// Beneficio: Mejora drásticamente la fluidez y reduce el consumo de CPU/Batería.
+const AssetCard = React.memo(({
   asset,
   navigation,
   showChildrenButton = false,
@@ -81,8 +86,8 @@ const AssetCard = ({
             source={
               asset.image
                 ? {
-                    uri: asset.image.url
-                  }
+                  uri: asset.image.url
+                }
                 : Asset.fromModule(require('../../assets/images/no-image.png'))
             }
           />
@@ -102,7 +107,7 @@ const AssetCard = ({
       )}
     </Card>
   );
-};
+});
 
 export default function AssetsScreen({
   navigation,
@@ -119,34 +124,48 @@ export default function AssetsScreen({
   const { hasViewPermission } = useAuth();
   const defaultFilterFields: FilterField[] = [];
   const getCriteriaFromFilterFields = (filterFields: FilterField[]) => {
+    // [MODIFICADO] Ordenamiento Predeterminado
+    // Impacto: Fuerza el orden por 'location.name' ascendente.
+    // Beneficio: Los activos aparecen ordenados por ubicación (A-Z) por defecto.
     const initialCriteria: SearchCriteria = {
       filterFields: defaultFilterFields,
       pageSize: 10,
       pageNum: 0,
-      direction: 'DESC'
+      direction: 'ASC',
+      sortField: 'location.name'
     };
     let newFilterFields = [...initialCriteria.filterFields];
     filterFields.forEach(
       (filterField) =>
-        (newFilterFields = newFilterFields.filter(
-          (ff) => ff.field != filterField.field
-        ))
+      (newFilterFields = newFilterFields.filter(
+        (ff) => ff.field != filterField.field
+      ))
     );
     return {
       ...initialCriteria,
       filterFields: [...newFilterFields, ...filterFields]
     };
   };
+
   const [criteria, setCriteria] = useState<SearchCriteria>(
     getCriteriaFromFilterFields([])
   );
+  // [CORREGIDO] Fix primera búsqueda sin resultados
+  // Impacto: Agrega 'view' a las dependencias del useEffect
+  // Beneficio: La primera búsqueda ahora ejecuta getAssets correctamente
+  // [CORREGIDO] Fix primera búsqueda sin resultados
+  // Impacto: Estabilidad de Búsqueda Móvil
+  // Explicación: Anteriormente, este efecto solo escuchaba cambios en 'criteria'.
+  // Al realizar la primera búsqueda, el cambio de vista a 'list' ocurría después del cambio de criteria,
+  // por lo que la condición view === 'list' fallaba.
+  // Al agregar 'view' a las dependencias, aseguramos que la búsqueda se ejecute tan pronto como la vista cambie.
   useEffect(() => {
     if (hasViewPermission(PermissionEntity.ASSETS) && view === 'list') {
       dispatch(
-        getAssets({ ...criteria, pageSize: 10, pageNum: 0, direction: 'DESC' })
+        getAssets({ ...criteria, pageSize: 10, pageNum: 0, direction: 'ASC', sortField: 'location.name' })
       );
     }
-  }, [criteria]);
+  }, [criteria, view]);  // ✅ Agregado 'view' a las dependencias
   const [currentAssets, setCurrentAssets] = useState<AssetRow[]>([]);
   useEffect(() => {
     if (
@@ -168,33 +187,31 @@ export default function AssetsScreen({
     setCriteria(getCriteriaFromFilterFields([]));
   };
 
-  const isCloseToBottom = ({
-    layoutMeasurement,
-    contentOffset,
-    contentSize
-  }) => {
-    const paddingToBottom = 20;
-    return (
-      layoutMeasurement.height + contentOffset.y >=
-      contentSize.height - paddingToBottom
-    );
-  };
+
   const onQueryChange = (query) => {
+    // [MODIFICADO] Búsqueda Multicampo
+    // Impacto: Busca en 'name' Y 'location.name'.
+    // Beneficio: Permite encontrar activos por su nombre o por su ubicación.
     onSearchQueryChange<AssetDTO>(
       query,
       criteria,
       setCriteria,
       setSearchQuery,
-      ['name', 'model', 'description', 'additionalInfos']
+      // @ts-ignore
+      ['name', 'model', 'description', 'additionalInfos', 'location.name']
     );
     setView('list');
   };
+
+  // [MODIFICADO] Optimización de Búsqueda: Debounce
+  // Impacto: Reducido de 1000ms a 500ms.
+  // Beneficio: La búsqueda se siente más rápida y responsiva.
   useDebouncedEffect(
     () => {
       if (startedSearch) onQueryChange(searchQuery);
     },
     [searchQuery],
-    1000
+    500
   );
 
   useEffect(() => {
@@ -211,12 +228,15 @@ export default function AssetsScreen({
     setCurrentAssets(result);
   }, [assetsHierarchy]);
 
-  const handleViewChildren = (asset) => {
+  // [MODIFICADO] Optimización de Rendimiento: useCallback
+  // Impacto: Mantiene estable la referencia de la función entre renderizados.
+  // Beneficio: Evita re-crear la función innecesariamente, ayudando a React.memo.
+  const handleViewChildren = React.useCallback((asset) => {
     navigation.push('Assets', {
       id: asset.id,
       hierarchy: asset.hierarchy
     });
-  };
+  }, [navigation]);
 
   return (
     <View
@@ -230,14 +250,19 @@ export default function AssetsScreen({
         style={{ backgroundColor: theme.colors.background }}
       />
       {view === 'list' ? (
-        <ScrollView
+        <FlatList
           style={styles.scrollView}
-          onScroll={({ nativeEvent }) => {
-            if (isCloseToBottom(nativeEvent)) {
-              if (!loadingGet && !lastPage)
-                dispatch(getMoreAssets(criteria, currentPageNum + 1));
+          data={assets.content}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => (
+            <AssetCard asset={item} navigation={navigation} />
+          )}
+          onEndReached={() => {
+            if (!loadingGet && !lastPage) {
+              dispatch(getMoreAssets(criteria, currentPageNum + 1));
             }
           }}
+          onEndReachedThreshold={0.5}
           refreshControl={
             <RefreshControl
               refreshing={loadingGet}
@@ -245,26 +270,35 @@ export default function AssetsScreen({
               colors={[theme.colors.primary]}
             />
           }
-          scrollEventThrottle={400}
-        >
-          {!!assets.content.length ? (
-            assets.content.map((asset) => (
-              <AssetCard key={asset.id} asset={asset} navigation={navigation} />
-            ))
-          ) : loadingGet ? null : (
-            <View
-              style={{
-                backgroundColor: 'white',
-                padding: 20,
-                borderRadius: 10
-              }}
-            >
-              <Text variant={'titleLarge'}>
-                {t('no_element_match_criteria')}
-              </Text>
-            </View>
-          )}
-        </ScrollView>
+          ListFooterComponent={
+            loadingGet && !assets.content.length ? (
+              <ActivityIndicator
+                animating={true}
+                color={theme.colors.primary}
+                style={{ margin: 10 }}
+              />
+            ) : null
+          }
+          ListEmptyComponent={
+            !loadingGet ? (
+              <View
+                style={{
+                  backgroundColor: 'white',
+                  padding: 20,
+                  borderRadius: 10
+                }}
+              >
+                <Text variant={'titleLarge'}>
+                  {t('no_element_match_criteria')}
+                </Text>
+              </View>
+            ) : null
+          }
+          removeClippedSubviews={true}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+        />
       ) : (
         <ScrollView
           style={styles.scrollView}

@@ -24,8 +24,8 @@ export default ({ config }: ConfigContext): { expo: ExpoConfig } => ({
       backgroundColor: '#ffffff'
     },
     updates: {
-      fallbackToCacheTimeout: 0,
-      url: 'https://u.expo.dev/803b5007-0c60-4030-ac3a-c7630b223b92'
+      fallbackToCacheTimeout: 0
+      // url: 'https://u.expo.dev/803b5007-0c60-4030-ac3a-c7630b223b92'
     },
     assetBundlePatterns: ['**/*'],
     ios: {
@@ -48,10 +48,10 @@ export default ({ config }: ConfigContext): { expo: ExpoConfig } => ({
       favicon: './assets/images/favicon.png'
     },
     extra: {
-      API_URL: apiUrl,
-      eas: {
-        projectId: '803b5007-0c60-4030-ac3a-c7630b223b92'
-      }
+      API_URL: apiUrl
+      // eas: {
+      //   projectId: '803b5007-0c60-4030-ac3a-c7630b223b92'
+      // }
     },
     plugins: [
       'react-native-nfc-manager',

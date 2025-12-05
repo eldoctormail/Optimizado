@@ -396,7 +396,7 @@ function Meters() {
             validation={Yup.object().shape(shape)}
             submitText={t('add')}
             values={{}}
-            onChange={({ field, e }) => {}}
+            onChange={({ field, e }) => { }}
             onSubmit={async (values) => {
               let formattedValues = formatValues(values);
               return new Promise<void>((resolve, rej) => {
@@ -461,9 +461,9 @@ function Meters() {
               }),
               location: currentMeter?.location
                 ? {
-                    label: currentMeter?.location.name,
-                    value: currentMeter?.location.id
-                  }
+                  label: currentMeter?.location.name,
+                  value: currentMeter?.location.id
+                }
                 : null,
               asset: {
                 label: currentMeter?.asset.name,
@@ -471,12 +471,12 @@ function Meters() {
               },
               category: currentMeter?.meterCategory
                 ? {
-                    label: currentMeter?.meterCategory.name,
-                    value: currentMeter?.meterCategory.id
-                  }
+                  label: currentMeter?.meterCategory.name,
+                  value: currentMeter?.meterCategory.id
+                }
                 : null
             }}
-            onChange={({ field, e }) => {}}
+            onChange={({ field, e }) => { }}
             onSubmit={async (values) => {
               let formattedValues = formatValues(values);
               return new Promise<void>((resolve, rej) => {
@@ -518,9 +518,13 @@ function Meters() {
         <MenuItem
           disabled={loadingExport['meters']}
           onClick={() => {
-            dispatch(exportEntity('meters')).then((url: string) => {
-              window.open(url);
-            });
+            dispatch(exportEntity('meters'))
+              .then((url: string) => {
+                window.open(url);
+              })
+              .catch((e) => {
+                showSnackBar(t('an_error_occurred'), 'error');
+              });
           }}
         >
           <Stack spacing={2} direction="row">

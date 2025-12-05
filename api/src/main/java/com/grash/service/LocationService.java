@@ -65,6 +65,10 @@ public class LocationService {
         return locationRepository.findAll();
     }
 
+    public List<Location> getAll(Sort sort) {
+        return locationRepository.findAll(sort);
+    }
+
     public void delete(Long id) {
         locationRepository.deleteById(id);
     }

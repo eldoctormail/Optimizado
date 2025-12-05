@@ -252,18 +252,29 @@ public class AssetService {
         asset.setPower(dto.getPower());
         asset.setCustomId(getAssetNumber(company));
         asset.setManufacturer(dto.getManufacturer());
-        Optional<Location> optionalLocation = locationService.findByNameIgnoreCaseAndCompany(dto.getLocationName(),
+        String locationName = sanitize(dto.getLocationName());
+        Optional<Location> optionalLocation = locationService.findByNameIgnoreCaseAndCompany(locationName,
                 companyId).stream().findFirst();
+        
+        if (locationName != null && !locationName.isEmpty() && !optionalLocation.isPresent()) {
+             throw new CustomException("Location not found: " + locationName, HttpStatus.BAD_REQUEST);
+        }
+        
         optionalLocation.ifPresent(asset::setLocation);
         
         // [CORREGIDO] Buscar parent asset por nombre Y location, no solo nombre
         // Impacto: Evita vincular assets con el mismo nombre en diferentes locations
         Optional<Asset> optionalAsset = Optional.empty();
-        if (dto.getParentAssetName() != null && !dto.getParentAssetName().isEmpty() && optionalLocation.isPresent()) {
-            optionalAsset = findByNameIgnoreCaseAndCompany(dto.getParentAssetName(), companyId)
+        String parentAssetName = sanitize(dto.getParentAssetName());
+        if (parentAssetName != null && !parentAssetName.isEmpty() && optionalLocation.isPresent()) {
+            optionalAsset = findByNameIgnoreCaseAndCompany(parentAssetName, companyId)
                     .stream()
                     .filter(a -> a.getLocation() != null && a.getLocation().getId().equals(optionalLocation.get().getId()))
                     .findFirst();
+            
+            if (!optionalAsset.isPresent()) {
+                throw new CustomException("Parent Asset '" + parentAssetName + "' not found in Location '" + locationName + "'", HttpStatus.BAD_REQUEST);
+            }
         }
         optionalAsset.ifPresent(asset::setParentAsset);
         Optional<AssetCategory> optionalAssetCategory =
@@ -320,41 +331,47 @@ public class AssetService {
         return assetRepository.findByBarCodeAndCompany_Id(data, id);
     }
 
+    private static String sanitize(String input) {
+        if (input == null) return null;
+        return input.replace('\u00A0', ' ').trim();
+    }
+
+    private static String getAssetKey(String name, String locationName) {
+        return (name != null ? sanitize(name).toLowerCase() : "") + "|" + (locationName != null ? sanitize(locationName).toLowerCase() : "");
+    }
+
     public static List<AssetImportDTO> orderAssets(List<AssetImportDTO> assets) {
         Map<String, List<AssetImportDTO>> assetMap = new HashMap<>();
         List<AssetImportDTO> identifiedTopLevelAssets = new ArrayList<>();
 
-        Set<String> allAssetNames = new HashSet<>();
+        Set<String> allAssetKeys = new HashSet<>();
         for (AssetImportDTO asset : assets) {
-            if (asset.getName() != null) { // Guard against assets with null names if possible
-                allAssetNames.add(asset.getName());
+            if (asset.getName() != null) {
+                allAssetKeys.add(getAssetKey(asset.getName(), asset.getLocationName()));
             }
         }
 
-        // Group assets by parent name and identify top-level assets
-        // Using a HashSet here to ensure we only consider each unique asset object once
-        // for building the map and topLevelAssets, in case the input list has duplicate object references.
         Set<AssetImportDTO> distinctInputAssets = new HashSet<>(assets);
 
-        for (AssetImportDTO asset : distinctInputAssets) { // Iterate over unique asset objects
-            String parentName = asset.getParentAssetName();
-            assetMap.computeIfAbsent(parentName, k -> new ArrayList<>()).add(asset);
+        for (AssetImportDTO asset : distinctInputAssets) {
+            String parentName = sanitize(asset.getParentAssetName());
+            // Asumimos que el padre debe estar en la misma ubicación que el hijo
+            String parentKey = getAssetKey(parentName, asset.getLocationName());
+            
+            if (parentName != null) {
+                assetMap.computeIfAbsent(parentKey, k -> new ArrayList<>()).add(asset);
+            }
 
-            // An asset is top-level if it has no parent,
-            // or its declared parent doesn't exist in the provided list of assets.
-            if (parentName == null || !allAssetNames.contains(parentName)) {
+            // Un activo es de nivel superior si no tiene padre,
+            // o si su padre declarado no existe en la lista de activos proporcionada (en la misma ubicación).
+            if (parentName == null || !allAssetKeys.contains(parentKey)) {
                 identifiedTopLevelAssets.add(asset);
             }
         }
 
         List<AssetImportDTO> orderedAssets = new ArrayList<>();
-        Set<AssetImportDTO> visited = new HashSet<>(); // Keep track of visited assets
+        Set<AssetImportDTO> visited = new HashSet<>();
 
-        // Process identified top-level assets.
-        // The `visited` set will ensure each asset is added only once,
-        // even if it appears multiple times in `identifiedTopLevelAssets`
-        // (e.g., multiple distinct orphan objects point to the same non-existent parent)
-        // or if children of different top-level assets overlap due to same names.
         orderAssetsRecursive(assetMap, identifiedTopLevelAssets, orderedAssets, visited);
 
         return orderedAssets;
@@ -368,10 +385,11 @@ public class AssetService {
             return;
         }
         for (AssetImportDTO asset : currentLevelAssets) {
-            // Only process and add the asset if it hasn't been visited yet
-            if (visited.add(asset)) { // .add() returns true if the element was new to the set
+            if (visited.add(asset)) {
                 orderedAssets.add(asset);
-                List<AssetImportDTO> children = assetMap.get(asset.getName());
+                // Buscar hijos que tengan a este activo como padre (en la misma ubicación)
+                String currentAssetKey = getAssetKey(asset.getName(), asset.getLocationName());
+                List<AssetImportDTO> children = assetMap.get(currentAssetKey);
                 if (children != null) {
                     orderAssetsRecursive(assetMap, children, orderedAssets, visited);
                 }
@@ -416,11 +434,12 @@ public class AssetService {
 
     public long getMTTR(Long assetId, Date start, Date end) {
         Collection<WorkOrder> workOrders = workOrderService.findByAssetAndCreatedAtBetween(assetId, start, end);
-        List<Labor> labors = new ArrayList<>();
-        for (WorkOrder workOrder : workOrders) {
-            labors.addAll(laborService.findByWorkOrder(workOrder.getId()));
+        if (workOrders.isEmpty()) {
+            return 0;
         }
-        return workOrders.isEmpty() ? 0 : (Labor.getTotalWorkDuration(labors) / 60) / workOrders.size();
+        List<Long> workOrderIds = workOrders.stream().map(WorkOrder::getId).collect(Collectors.toList());
+        Collection<Labor> labors = laborService.findByWorkOrderIn(workOrderIds);
+        return (Labor.getTotalWorkDuration(labors) / 60) / workOrders.size();
     }
 
     public long getDowntime(Long assetId, Date start, Date end) {

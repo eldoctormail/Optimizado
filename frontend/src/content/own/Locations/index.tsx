@@ -550,9 +550,13 @@ function Locations() {
         <MenuItem
           disabled={loadingExport['locations']}
           onClick={() => {
-            dispatch(exportEntity('locations')).then((url: string) => {
-              window.open(url);
-            });
+            dispatch(exportEntity('locations'))
+              .then((url: string) => {
+                window.open(url);
+              })
+              .catch((e) => {
+                showSnackBar(t('an_error_occurred'), 'error');
+              });
           }}
         >
           <Stack spacing={2} direction="row">

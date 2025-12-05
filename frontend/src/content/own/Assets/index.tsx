@@ -138,32 +138,59 @@ function Assets() {
   };
   const [criteria, setCriteria] = useState<SearchCriteria>(initialCriteria);
   const onQueryChange = (event) => {
-    // setView(event.target.value ? 'list' : 'hierarchy'); // [MODIFICADO] Mantener vista jerárquica
-    onSearchQueryChange<AssetDTO>(event, criteria, setCriteria, [
-      'name',
-      'description',
-      'model',
-      'additionalInfos',
-      'barCode',
-      'area'
-    ]);
+    const query = event.target.value;
+    if (!query) {
+      // [OPTIMIZACIÓN] Reset Completo al Limpiar Búsqueda
+      // Impacto: Estabilidad y Experiencia de Usuario
+      // Explicación: Cuando el usuario borra el texto, no queremos un estado intermedio.
+      // Forzamos un reinicio total (handleReset) que limpia filtros y recarga la jerarquía limpia.
+      handleReset(true);
+      setView('hierarchy');
+    } else {
+      // [OPTIMIZACIÓN] Cambio de Vista Dinámico
+      // Impacto: Prevención de Errores (Pantalla en Blanco)
+      // Explicación: La búsqueda devuelve una lista plana, que es incompatible con la vista de árbol ('hierarchy').
+      // Cambiamos explícitamente a 'list' ANTES de buscar para asegurar que el grid pueda renderizar los resultados.
+      setView('list');
+      onSearchQueryChange<AssetDTO>(event, criteria, setCriteria, [
+        'name',
+        'description',
+        'model',
+        'additionalInfos',
+        'barCode',
+        'area'
+      ]);
+    }
   };
   const debouncedQueryChange = useMemo(() => debounce(onQueryChange, 1300), []);
   const onFilterChange = (newFilters: FilterField[]) => {
     const newCriteria = { ...criteria };
     newCriteria.filterFields = newFilters;
-    // [MODIFICADO] Si hay filtros activos, aumentamos el tamaño de página para mostrar "todos" los registros
-    // y aseguramos el orden ascendente (A-Z), como solicitó el usuario.
-    if (newFilters.length > 0) {
-      newCriteria.pageSize = 2000; // Número suficientemente grande para "todos"
+
+    // [OPTIMIZACIÓN] Detección Inteligente de Filtros
+    // Impacto: Usabilidad
+    // Explicación: Detectamos si hay filtros reales activos (más allá del filtro por defecto 'archived').
+    const isEffectivelyFiltered = newFilters.length > 0 &&
+      (newFilters.length > 1 || newFilters[0].field !== 'archived');
+
+    if (isEffectivelyFiltered) {
+      // [LOGICA] Modo Lista para Filtros
+      // Si hay filtros, necesitamos ver los resultados planos que coinciden.
+      // Cambiamos a 'list' y aumentamos el pageSize para mostrar todos los resultados relevantes.
+      newCriteria.pageSize = 2000;
       newCriteria.direction = 'ASC';
-      // [MODIFICADO] Forzar ordenamiento por Nombre (A-Z) en la vista jerárquica filtrada
       if (apiRef.current && apiRef.current.setSortModel) {
         apiRef.current.setSortModel([{ field: 'name', sort: 'asc' }]);
       }
+      setView('list');
     } else {
-      // Restaurar valores por defecto si se limpian los filtros (opcional, o mantener lo que estaba)
-      newCriteria.pageSize = 10;
+      // [LOGICA] Retorno a Jerarquía
+      // Si se limpian los filtros, volvemos automáticamente a la vista de árbol ('hierarchy').
+      // Esto dispara la recarga automática de la estructura jerárquica.
+      setView('hierarchy');
+      if (newFilters.length === 0) {
+        newCriteria.pageSize = 10;
+      }
     }
     setCriteria(newCriteria);
   };
@@ -206,10 +233,19 @@ function Assets() {
     }
   }, [locationParamObject]);
 
+  // [CORREGIDO] Solo cargar datos paginados cuando estamos en vista 'list'
+  // Causa raíz: getAssets interfería con getAssetChildren cuando se volvía a hierarchy
+  // Beneficio: Evita conflictos entre carga de datos jerárquicos y paginados
   useEffect(() => {
-    if (hasViewPermission(PermissionEntity.ASSETS))
+    if (view === 'list' && hasViewPermission(PermissionEntity.ASSETS)) {
+      console.log('DEBUG: Fetching assets list', criteria);
       dispatch(getAssets(criteria));
-  }, [criteria]);
+    }
+  }, [criteria, view]);
+
+  // [LIMPIEZA] Eliminado el useEffect redundante que causaba conflictos
+  // La lógica de recarga ahora se maneja explícitamente en onQueryChange -> handleReset
+
 
   const onCreationSuccess = () => {
     setOpenAddModal(false);
@@ -238,9 +274,13 @@ function Assets() {
         <MenuItem
           disabled={loadingExport['assets']}
           onClick={() => {
-            dispatch(exportEntity('assets')).then((url: string) => {
-              window.open(url);
-            });
+            dispatch(exportEntity('assets'))
+              .then((url: string) => {
+                window.open(url);
+              })
+              .catch((e) => {
+                showSnackBar(t('an_error_occurred'), 'error');
+              });
           }}
         >
           <Stack spacing={2} direction="row">
@@ -760,7 +800,8 @@ function Assets() {
     renderCell: (params) => <GroupingCellWithLazyLoading {...params} />
   };
   const CustomRow = (props: React.ComponentProps<typeof GridRow>) => {
-    const rowNode = apiRef.current.getRowNode(props.rowId);
+    // [CORREGIDO] Safety check para evitar crash si rowNode no existe
+    const rowNode = apiRef.current?.getRowNode ? apiRef.current.getRowNode(props.rowId) : null;
     const theme = useTheme();
 
     return (
@@ -773,9 +814,8 @@ function Assets() {
                 rowNode.depth % 2 === 0
                   ? theme.colors.primary.light
                   : theme.colors.primary.main,
-              color: 'white'
             }
-            : undefined
+            : {}
         }
       />
     );
@@ -851,13 +891,20 @@ function Assets() {
                   }
                   apiRef={apiRef}
                   getRowHeight={() => 'auto'}
-                  getTreeDataPath={(row) =>
-                    view === 'hierarchy'
-                      ? (row.hierarchyNames && isFiltered
-                        ? [...row.hierarchyNames, row.name]
-                        : row.hierarchy.map((id) => id.toString()))
-                      : [row.id.toString()]
-                  }
+                  getTreeDataPath={(row) => {
+                    if (view === 'hierarchy') {
+                      if (isFiltered) {
+                        return row.hierarchyNames
+                          ? [...row.hierarchyNames, row.name]
+                          : [row.id.toString()];
+                      } else {
+                        return row.hierarchy
+                          ? row.hierarchy.map((id) => id.toString())
+                          : [row.id.toString()];
+                      }
+                    }
+                    return [row.id.toString()];
+                  }}
                   disableColumnFilter
                   loading={loadingGet}
                   groupingColDef={

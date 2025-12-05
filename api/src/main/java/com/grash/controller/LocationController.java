@@ -67,8 +67,8 @@ public class LocationController {
             } else throw new CustomException("Access Denied", HttpStatus.FORBIDDEN);
         } else
             // [MODIFICADO] Se añade ordenamiento predeterminado por nombre ascendente para superadmins también.
-            return locationService.getAll().stream()
-                    .sorted((l1, l2) -> l1.getName().compareToIgnoreCase(l2.getName())) // Ordenamiento en memoria (A-Z)
+            // Impacto: Usa ordenamiento en base de datos en lugar de memoria para mayor eficiencia.
+            return locationService.getAll(Sort.by(Sort.Direction.ASC, "name")).stream()
                     .map(location -> locationMapper.toShowDto(location,
                     locationService)).collect(Collectors.toList());
     }

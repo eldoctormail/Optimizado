@@ -7,6 +7,7 @@ import com.grash.model.enums.AssetStatus;
 import com.grash.utils.Helper;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
@@ -36,12 +37,14 @@ public class Asset extends CompanyAudit {
     // [MODIFICADO] Cambiado a FetchType.LAZY.
     // Impacto: Evita cargar la ubicación completa en cada consulta de activo.
     @ManyToOne(fetch = FetchType.LAZY)
+    @BatchSize(size = 50)
     private Location location;
 
     // [MODIFICADO] Cambiado a FetchType.LAZY.
     // Impacto: Previene la carga recursiva de activos padres.
     @ManyToOne(fetch = FetchType.LAZY)
     @OnDelete(action = OnDeleteAction.CASCADE)
+    @BatchSize(size = 50)
     private Asset parentAsset;
 
     private String area;
